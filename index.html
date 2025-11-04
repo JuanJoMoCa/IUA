@@ -1,37 +1,308 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>AR.js — Tierra</title>
-    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.js"></script>
-  </head>
-  <body style="margin: 0; overflow: hidden;">
-    <a-scene
-      embedded
-      arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
-    >
-      <!-- Precarga de textura -->
-      <a-assets>
-        <img id="earthTex"
-             crossorigin="anonymous"
-             src="https://raw.githubusercontent.com/aframevr/sample-assets/master/assets/images/space/earth_atmos_4096.jpg">
-      </a-assets>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1, user-scalable=no" />
+  <title>AR Cube — Fun Pack</title>
 
-      <a-marker preset="hiro">
-        <!-- Esfera con textura de la Tierra -->
-        <a-sphere
-          position="0 0.5 0"
-          radius="0.5"
-          segments-height="53"
-          src="#earthTex"
-          material="shader: standard; metalness: 0.2; roughness: 0.8"
-          animation__pulse="property: scale; from: 1 1 1; to: 2 2 2; dir: alternate; dur: 1000; easing: easeInOutCubic; loop: true"
-        >animation__spin="property: rotation; to: 0 360 0; dur: 12000; easing: linear; loop: true"
-</a-sphere>
-      </a-marker>
+  <!-- A-Frame y AR.js -->
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.js"></script>
+  <!-- Gestos táctiles (rotar con 1 dedo, escalar con 2) -->
+  <script src="https://unpkg.com/aframe-gesture-detector-component@4.0.5/dist/aframe-gesture-detector-component.min.js"></script>
 
-      <a-entity camera></a-entity>
-    </a-scene>
-  </body>
+  <style>
+    html, body { margin:0; padding:0; overflow:hidden; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif; }
+    /* Controles flotantes */
+    .controls {
+      position: fixed; left: 50%; transform: translateX(-50%);
+      bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+      background: rgba(0,0,0,.35); padding: 10px 12px; border-radius: 14px; backdrop-filter: blur(6px);
+      z-index: 5;
+    }
+    .btn {
+      appearance: none; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08);
+      color: #fff; font-weight: 600; padding: 8px 10px; border-radius: 10px; cursor: pointer;
+      transition: transform .08s ease, background .2s ease; user-select: none;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn:hover { background: rgba(255,255,255,.14); }
+    .hint {
+      position: fixed; inset: 0; display: grid; place-items: center; text-align: center;
+      background: radial-gradient(1200px 600px at 50% 100%, rgba(0,0,0,.4), rgba(0,0,0,.75));
+      color: #fff; z-index: 4; padding: 24px;
+    }
+    .hint .card {
+      background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); border-radius: 16px;
+      padding: 16px 18px; max-width: 520px;
+    }
+    .hint h2 { margin: 0 0 6px; font-size: 20px; }
+    .hint p { margin: 0; opacity: .9; }
+    /* Etiqueta de resultado */
+    .badge {
+      position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.4); color: #fff; padding: 6px 10px; border-radius: 10px;
+      font-weight: 700; letter-spacing: .3px; z-index: 5; display: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Pista de uso hasta que el marcador se detecte -->
+  <div id="hint" class="hint">
+    <div class="card">
+      <h2>Apunta al marcador <strong>HIRO</strong></h2>
+      <p>Cuando se detecte, aparecerá el cubo con controles. Puedes girarlo con 1 dedo y escalarlo con 2.</p>
+    </div>
+  </div>
+
+  <!-- Badge de resultado (por ejemplo, al tirar el dado) -->
+  <div id="badge" class="badge">Resultado: 6</div>
+
+  <!-- Controles -->
+  <div class="controls" aria-label="Controles AR">
+    <button id="btnSpin" class="btn">🔄 Girar</button>
+    <button id="btnBounce" class="btn">⛰️ Rebotar</button>
+    <button id="btnColor" class="btn">🎨 Color</button>
+    <button id="btnRoll" class="btn">🎲 Tirar</button>
+    <button id="btnBurst" class="btn">✨ Fiesta</button>
+    <button id="btnWire" class="btn">▥ Wireframe</button>
+    <button id="btnReset" class="btn">↺ Reset</button>
+  </div>
+
+  <!-- Escena AR -->
+  <a-scene
+    embedded
+    vr-mode-ui="enabled: false"
+    renderer="antialias: true; colorManagement: true; physicallyCorrectLights: true"
+    gesture-detector
+    cursor="rayOrigin: mouse"
+    raycaster="objects: .clickable"
+    arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;">
+
+    <a-assets></a-assets>
+
+    <!-- Marcador HIRO -->
+    <a-marker id="marker" preset="hiro">
+      <!-- Luz y sombra falsa (círculo) -->
+      <a-entity light="type: ambient; intensity: 0.4"></a-entity>
+      <a-entity light="type: directional; intensity: 0.9" position="1.2 2 1"></a-entity>
+      <a-circle radius="0.55" rotation="-90 0 0" position="0 0 0"
+                material="color: #000; opacity: 0.25; shader: flat"></a-circle>
+
+      <!-- CUBO principal -->
+      <a-box id="cube"
+             class="clickable"
+             position="0 0.5 0"
+             depth="1" height="1" width="1"
+             material="shader: standard; color: #ff365d; metalness: 0.2; roughness: 0.45; opacity: 0.9"
+             shadow="cast: true; receive: false"
+             cube-fun>
+      </a-box>
+
+      <!-- Texto 3D para mostrar resultados breves -->
+      <a-entity id="result3d"
+                position="0 1.2 0"
+                text="value: ; align: center; width: 2.5; color: #FFFFFF; wrapCount: 8; opacity: 0;">
+      </a-entity>
+    </a-marker>
+
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <script>
+    // Componente "divertido" del cubo
+    AFRAME.registerComponent('cube-fun', {
+      schema: { spinDur: { default: 900 } },
+      init: function () {
+        const el = this.el;
+        this.colors = ['#FF365D', '#39FF14', '#00E5FF', '#FFD166', '#8338EC', '#FF9F1C'];
+        this.colorIndex = 0;
+        this.bouncing = false;
+        this.isWire = false;
+        this._ac = null; // AudioContext
+        this._lastTap = 0;
+
+        // Animación flotante suave por defecto
+        el.setAttribute('animation__float',
+          'property: position; dir: alternate; dur: 1200; easing: easeInOutSine; loop: true; from: 0 0.48 0; to: 0 0.64 0');
+
+        // Click para cambiar color
+        el.addEventListener('click', () => this.randomizeColor());
+
+        // Gestos: 1 dedo rota, 2 dedos escalan
+        const sceneEl = el.sceneEl;
+        sceneEl.addEventListener('onefingermove', (e) => {
+          // Rotación lateral
+          el.object3D.rotation.y += e.detail.positionChange.x * 0.01;
+          // Tilt sutil con movimiento vertical
+          el.object3D.rotation.x += e.detail.positionChange.y * 0.01;
+        });
+        sceneEl.addEventListener('twofingermove', (e) => {
+          const scaleNow = el.object3D.scale.x;
+          const next = AFRAME.utils.math.clamp(scaleNow * e.detail.scale, 0.4, 2.6);
+          el.object3D.scale.set(next, next, next);
+        });
+
+        // Doble toque = Fiesta de mini-cubos
+        el.addEventListener('click', () => {
+          const now = performance.now();
+          if (now - this._lastTap < 300) this.burst();
+          this._lastTap = now;
+        });
+
+        // Botones de UI
+        const $ = (id) => document.getElementById(id);
+        $('btnSpin').addEventListener('click', () => this.spin());
+        $('btnBounce').addEventListener('click', () => this.toggleBounce());
+        $('btnColor').addEventListener('click', () => this.randomizeColor());
+        $('btnRoll').addEventListener('click', () => this.rollDice());
+        $('btnBurst').addEventListener('click', () => this.burst());
+        $('btnWire').addEventListener('click', () => this.toggleWire());
+        $('btnReset').addEventListener('click', () => this.reset());
+
+        // Mostrar/ocultar pista según el marcador
+        const marker = document.getElementById('marker');
+        marker.addEventListener('markerFound', () => document.getElementById('hint').style.display = 'none');
+        marker.addEventListener('markerLost', () => document.getElementById('hint').style.display = 'grid');
+
+        // Texto 3D de resultado
+        this.result3d = document.getElementById('result3d');
+        this.badge = document.getElementById('badge');
+      },
+
+      randomizeColor() {
+        this.colorIndex = (this.colorIndex + 1) % this.colors.length;
+        this.el.setAttribute('material', 'color', this.colors[this.colorIndex]);
+        this.beep(660, 120);
+        if (navigator.vibrate) navigator.vibrate(25);
+      },
+
+      spin() {
+        // Giro suave 360°
+        const rot = this.el.getAttribute('rotation');
+        const toY = rot.y + 360;
+        this.el.setAttribute('animation__spin', `property: rotation; to: ${rot.x} ${toY} ${rot.z}; dur: ${this.data.spinDur}; easing: easeInOutSine; loop: 1`);
+        this.beep(880, 100);
+      },
+
+      toggleBounce() {
+        this.bouncing = !this.bouncing;
+        if (this.bouncing) {
+          this.el.setAttribute('animation__bounce',
+            'property: position; dir: alternate; dur: 600; easing: easeInOutQuad; loop: true; from: 0 0.46 0; to: 0 0.84 0');
+        } else {
+          this.el.removeAttribute('animation__bounce');
+          this.el.setAttribute('position', '0 0.5 0');
+        }
+        this.beep(520, 90);
+      },
+
+      toggleWire() {
+        this.isWire = !this.isWire;
+        this.el.setAttribute('material', 'wireframe', this.isWire);
+        this.beep(420, 80);
+      },
+
+      rollDice() {
+        // 6 orientaciones distintas + animación de "tirar"
+        const options = [
+          { num: 1, rot: '0 0 0' },
+          { num: 2, rot: '0 90 0' },
+          { num: 3, rot: '0 180 0' },
+          { num: 4, rot: '0 -90 0' },
+          { num: 5, rot: '90 0 0' },
+          { num: 6, rot: '-90 0 0' }
+        ];
+        const pick = options[Math.floor(Math.random() * options.length)];
+
+        // Pequeño “shake” + giro final hacia la rotación elegida
+        this.el.setAttribute('animation__shake',
+          'property: rotation; dir: alternate; easing: easeInOutSine; loop: 6; dur: 90; to: 10 10 0; from: -10 -10 0');
+        setTimeout(() => {
+          this.el.removeAttribute('animation__shake');
+          this.el.setAttribute('animation__roll',
+            `property: rotation; to: ${pick.rot}; dur: 800; easing: easeOutCubic; loop: 1`);
+        }, 560);
+
+        // Mostrar resultado en 3D y en badge
+        this.showResult(pick.num);
+        this.beep(980, 120);
+        if (navigator.vibrate) navigator.vibrate([20, 40, 30]);
+      },
+
+      burst() {
+        // Mini-cubos que salen disparados y se desvanecen
+        const parent = this.el.parentEl;
+        for (let i = 0; i < 12; i++) {
+          const s = document.createElement('a-box');
+          const r = () => (Math.random() * 2 - 1);
+          const color = this.colors[Math.floor(Math.random() * this.colors.length)];
+          s.setAttribute('position', `0 0.6 0`);
+          s.setAttribute('scale', '0.18 0.18 0.18');
+          s.setAttribute('material', `shader: standard; color: ${color}; opacity: 0.95; metalness:0.1; roughness:0.7`);
+          parent.appendChild(s);
+          // Animación de vuelo y desvanecimiento
+          s.setAttribute('animation__go', `property: position; to: ${r()} ${0.8 + Math.random()*0.8} ${r()}; dur: ${450 + Math.random()*350}; easing: easeOutCubic`);
+          s.setAttribute('animation__fade', `property: components.material.material.opacity; to: 0; dur: 500; delay: 350; easing: linear`);
+          // Limpieza
+          setTimeout(() => parent.removeChild(s), 900);
+        }
+        this.beep(720, 80);
+      },
+
+      reset() {
+        this.el.setAttribute('rotation', '0 0 0');
+        this.el.setAttribute('position', '0 0.5 0');
+        this.el.object3D.scale.set(1, 1, 1);
+        this.el.setAttribute('material', 'wireframe', false);
+        this.isWire = false;
+        if (this.result3d) {
+          this.result3d.setAttribute('text', 'value: ; opacity: 0');
+        }
+        const badge = document.getElementById('badge');
+        badge.style.display = 'none';
+        this.beep(300, 70);
+      },
+
+      showResult(n) {
+        // Texto 3D encima del cubo
+        this.result3d.setAttribute('text', `value: ${n}; align: center; width: 2.5; color: #FFFFFF; wrapCount: 8; opacity: 1`);
+        this.result3d.setAttribute('animation__pop', 'property: scale; from: 0.6 0.6 0.6; to: 1 1 1; dur: 160; easing: easeOutBack; loop: 1');
+        setTimeout(() => {
+          this.result3d.setAttribute('animation__fade3d', 'property: text.opacity; to: 0; dur: 500; easing: linear');
+        }, 1200);
+
+        // Badge flotante
+        const badge = this.badge;
+        badge.textContent = `Resultado: ${n}`;
+        badge.style.display = 'block';
+        badge.style.opacity = '1';
+        badge.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, fill: 'forwards' });
+        setTimeout(() => {
+          badge.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, fill: 'forwards' }).onfinish = () => {
+            badge.style.display = 'none';
+          };
+        }, 1400);
+      },
+
+      beep(freq = 660, ms = 100) {
+        try {
+          if (!this._ac) this._ac = new (window.AudioContext || window.webkitAudioContext)();
+          const ac = this._ac;
+          const osc = ac.createOscillator();
+          const gain = ac.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          osc.connect(gain); gain.connect(ac.destination);
+          const t = ac.currentTime;
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.exponentialRampToValueAtTime(0.15, t + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + ms/1000);
+          osc.start(t);
+          osc.stop(t + ms/1000);
+        } catch (e) { /* silencio si el navegador no permite audio */ }
+      }
+    });
+  </script>
+</body>
 </html>
